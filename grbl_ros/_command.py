@@ -76,7 +76,7 @@ class command(object):
         self.limits = [self.x_max, self.y_max, self.z_max]
         # initiates the serial port
         try:
-            self.s = serial.Serial(port=self.port, baudrate=self.baudrate)
+            self.s = serial.Serial(port=self.port, baudrate=self.baudrate, timeout=0.01)
             # set movement to Absolute coordinates
             self.ensureMovementMode(True)
             # try to get current position
@@ -118,15 +118,21 @@ class command(object):
             if(self.mode == self.MODE.NORMAL):
                 self.s.write(str.encode(gcode + '\n'))
                 # wait until receive response with EOL character
-                r = self.s.readline().decode('utf-8').strip()
-                if(len(r) > 0):
-                    responses.append(r)
-                # check to see if there are more lines in waiting
-                while (self.s.inWaiting() > 0):
-                    responses.append(self.s.readline().decode('utf-8').strip())
+                try:
+                    while True:
+                        r = self.s.readline().decode('utf-8').strip()
+                        if r:
+                            responses.append(r)
+                        else:
+                            break
+                except serial.SerialTimeoutException:
+                    pass
                 self.handle_responses(responses, gcode)
-                # last response should always be the state of grbl
-                return responses[-1]
+                # ensure last response should always be the state of grbl
+                if gcode.find('?') == -1:
+                    return self.send('?')
+                else:
+                    return responses[-1]
             elif(self.mode == self.MODE.DEBUG):
                 # in debug mode just return the GCODE that was input
                 return 'Sent: ' + gcode
